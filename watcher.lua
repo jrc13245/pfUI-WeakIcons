@@ -29,6 +29,12 @@ watcher.playerbuffs = {}
 for i=1,32 do
     watcher.playerbuffs[i] = {}
 end
+
+watcher.playerdebuffs = {} -- Added player debuffs
+for i=1,32 do
+    watcher.playerdebuffs[i] = {}
+end
+
 watcher.targetdebuffs = {}
 for i=1,32 do
     watcher.targetdebuffs[i] = {}
@@ -56,6 +62,23 @@ watcher:SetScript("OnUpdate", function()
             this.playerbuffs[i][4] = nil
             this.playerbuffs[i][5] = 0
         end
+
+        texture, name, timeleft, stacks = GetBuffData("player", i, "HARMFUL") -- Added player debuff scanning
+        timeleft = timeleft or 0
+        if texture and name and name ~= "" then
+            this.playerdebuffs[i][1] = timeleft
+            this.playerdebuffs[i][2] = i
+            this.playerdebuffs[i][3] = name
+            this.playerdebuffs[i][4] = texture
+            this.playerdebuffs[i][5] = stacks
+        else
+            this.playerdebuffs[i][1] = 0
+            this.playerdebuffs[i][2] = nil
+            this.playerdebuffs[i][3] = nil
+            this.playerdebuffs[i][4] = nil
+            this.playerdebuffs[i][5] = 0
+        end
+
         texture, name, timeleft, stacks = GetBuffData("target", i, "HARMFUL")
         timeleft = timeleft or 0
         if texture and name and name ~= "" then
@@ -79,6 +102,9 @@ function watcher:fetch(name, unit)
         for i=1,32 do
             if self.playerbuffs[i][3] == name then
                 return self.playerbuffs[i]
+            end
+            if self.playerdebuffs[i][3] == name then -- Added player debuff fetch
+                return self.playerdebuffs[i]
             end
         end
     elseif unit == "target" then
