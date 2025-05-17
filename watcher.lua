@@ -93,6 +93,21 @@ watcher:SetScript("OnUpdate", function()
             this.targetdebuffs[i][3] = nil
             this.targetdebuffs[i][4] = nil
             this.targetdebuffs[i][5] = 0
+
+            texture, name, timeleft, stacks = GetBuffData("target", i, "HELPFUL")
+            if name and name ~= "" then
+                this.targetdebuffs[i][1] = timeleft
+                this.targetdebuffs[i][2] = i
+                this.targetdebuffs[i][3] = name
+                this.targetdebuffs[i][4] = texture
+                this.targetdebuffs[i][5] = stacks
+            else
+                this.targetdebuffs[i][1] = 0
+                this.targetdebuffs[i][2] = nil
+                this.targetdebuffs[i][3] = nil
+                this.targetdebuffs[i][4] = nil
+                this.targetdebuffs[i][5] = 0
+            end
         end
     end
 end)
@@ -111,6 +126,12 @@ function watcher:fetch(name, unit)
         for i=1,32 do
             if self.targetdebuffs[i][3] == name then
                 return self.targetdebuffs[i]
+            end
+        end
+        for i=1,32 do
+            local texture, buffName, timeleft, stacks = GetBuffData("target", i, "HELPFUL")
+            if buffName == name then
+                return {timeleft, i, buffName, texture, stacks}
             end
         end
     end
