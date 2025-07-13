@@ -128,9 +128,23 @@ pfUI:RegisterModule("WeakIcons", "vanilla", function()
         f.texture:SetAllPoints(f)
         f.texture:SetTexture("")
 
-        f.text = f:CreateFontString()
+        -- Main, single timer text (large and centered)
+        f.text = f:CreateFontString(nil, "OVERLAY")
         f.text:SetPoint("CENTER", f)
         f.text:SetFont(args.font, (args.unit == "player") and args.bufffontsize or args.debufffontsize, "OUTLINE")
+
+        -- Calculate a smaller font size for the dual timers
+        local dualTimerFontSize = math.floor(((args.unit == "player") and args.bufffontsize or args.debufffontsize) * 0.8)
+
+        -- Top timer text (smaller and offset)
+        f.text_top = f:CreateFontString(nil, "OVERLAY")
+        f.text_top:SetPoint("CENTER", f, 0, f:GetHeight() * 0.18)
+        f.text_top:SetFont(args.font, dualTimerFontSize, "OUTLINE")
+
+        -- Bottom timer text (smaller and offset)
+        f.text_bottom = f:CreateFontString(nil, "OVERLAY")
+        f.text_bottom:SetPoint("CENTER", f, 0, f:GetHeight() * -0.18)
+        f.text_bottom:SetFont(args.font, dualTimerFontSize, "OUTLINE")
 
         f.smalltext = f:CreateFontString()
         f.smalltext:SetPoint("BOTTOMRIGHT", f)
@@ -152,35 +166,65 @@ pfUI:RegisterModule("WeakIcons", "vanilla", function()
 
             if not inactive then
                 -- Active icons: show icon if buff is active; if not, optionally show a missing icon.
-                local auraData = watcher:fetch(args.name, args.unit)
-                if auraData then
-                    if auraData[4] and auraData[4] ~= "" then
-                        this.texture:SetTexture(auraData[4])
+                local auraDataArray = watcher:fetch(args.name, args.unit, args.auraType)
+
+                if auraDataArray then
+                    local instanceCount = table.getn(auraDataArray)
+                    local firstAura = auraDataArray[1]
+
+                    -- Set texture from the first found aura
+                    if firstAura[4] and firstAura[4] ~= "" then
+                        this.texture:SetTexture(firstAura[4])
                     end
-                    local remaining = auraData[1] or 0
-                    if remaining > 0 then
-                        this.text:SetText(GetColoredTimeString(remaining))
+
+                    -- Sort auras by remaining duration, descending
+                    table.sort(auraDataArray, function(a, b) return a[1] > b[1] end)
+
+                    if instanceCount > 1 then
+                        -- MULTIPLE AURAS (e.g., dual Crusader)
+                        this.text:Hide() -- Hide the large central text
+
+                        -- Show longest duration in top text
+                        this.text_top:SetText(GetColoredTimeString(auraDataArray[1][1]))
+                        this.text_top:Show()
+
+                        -- Show second longest duration in bottom text
+                        if auraDataArray[2] then
+                            this.text_bottom:SetText(GetColoredTimeString(auraDataArray[2][1]))
+                            this.text_bottom:Show()
+                        else
+                            this.text_bottom:Hide()
+                        end
                     else
-                        this.text:SetText("")
+                        -- SINGLE AURA
+                        this.text_top:Hide()
+                        this.text_bottom:Hide()
+
+                        -- Show the single timer in the large central text
+                        this.text:SetText(GetColoredTimeString(firstAura[1]))
+                        this.text:Show()
                     end
-                    if auraData[5] and auraData[5] > 1 then
-                        this.smalltext:SetText(auraData[5])
+
+                    -- Handle stacks: use instanceCount for soft stacks, otherwise use the aura's own stack count
+                    local stacks = (instanceCount > 1) and instanceCount or firstAura[5]
+                    if stacks and stacks > 1 then
+                        this.smalltext:SetText(stacks)
                     else
                         this.smalltext:SetText("")
                     end
+
                     this.texture:SetDesaturated(false)
                     this.texture:Show()
                     this.backdrop:Show()
                 else
+                    -- AURA NOT ACTIVE
                     if C.weakicons.greyscale == "1" then
                         if tonumber(args.name) then
                             local defaultTex = GetSpellTexture(tonumber(args.name)) or ""
                             this.texture:SetTexture(defaultTex)
                         else
-                            local defaultTex = ""
-                            local spellName, _, spellIcon = GetSpellInfo(args.name)
-                            defaultTex = spellIcon or ""
-                            this.texture:SetTexture(defaultTex)
+                            local _, _, spellIcon = GetSpellInfo(args.name)
+                            this.texture:SetTexture(spellIcon or "")
                         end
                         this.texture:SetDesaturated(true)
                         this.texture:Show()
@@ -190,21 +234,20 @@ pfUI:RegisterModule("WeakIcons", "vanilla", function()
                         this.backdrop:Hide()
                     end
                     this.text:SetText("")
+                    this.text_top:SetText("")
+                    this.text_bottom:SetText("")
                     this.smalltext:SetText("")
                 end
             else
                 -- Inactive icons: show icon only when the buff is NOT active.
-                local auraData = watcher:fetch(args.name, args.unit)
+                local auraData = watcher:fetch(args.name, args.unit, args.auraType)
                 if auraData then
                     -- Buff is active, so hide the inactive icon.
                     this.texture:Hide()
                     this.backdrop:Hide()
                 else
                     -- Ensure we only show inactive debuffs if an enemy is targeted.
-                    if
-                        args.unit == "target" and
-                            (not UnitExists("target") or not UnitCanAttack("player", "target"))
-                     then
+                    if args.unit == "target" and (not UnitExists("target") or not UnitCanAttack("player", "target")) then
                         this.texture:Hide()
                         this.backdrop:Hide()
                         return
@@ -215,7 +258,7 @@ pfUI:RegisterModule("WeakIcons", "vanilla", function()
                     if tonumber(args.name) then
                         defaultTex = GetSpellTexture(tonumber(args.name)) or ""
                     else
-                        local spellName, _, spellIcon = GetSpellInfo(args.name)
+                        local _, _, spellIcon = GetSpellInfo(args.name)
                         defaultTex = spellIcon or ""
                     end
                     this.texture:SetTexture(defaultTex)
@@ -224,8 +267,7 @@ pfUI:RegisterModule("WeakIcons", "vanilla", function()
                     this.backdrop:Show()
                 end
             end
-        end
-        )
+        end)
 
         return f
     end
@@ -238,7 +280,7 @@ pfUI:RegisterModule("WeakIcons", "vanilla", function()
     local pdebuffs = string.split(C.weakicons.pdebuff.enabled, "#")  -- Get player debuffs
     for _, name in ipairs(pbuffs) do
         if name and name ~= "" then
-            local iconFrame = NewIcon({name = name, unit = "player", inactive = false})
+            local iconFrame = NewIcon({name = name, unit = "player", inactive = false, auraType = "HELPFUL"})
             pfUI.api.UpdateMovable(iconFrame)
         end
     end
@@ -248,9 +290,9 @@ pfUI:RegisterModule("WeakIcons", "vanilla", function()
             pfUI.api.UpdateMovable(iconFrame)
         end
     end
-    for _, name in ipairs(pdebuffs) do  -- Iterate and create player debuff icons
+    for _, name in ipairs(pdebuffs) do
         if name and name ~= "" then
-            local iconFrame = NewIcon({name = name, unit = "player", inactive = false}) -- Unit is player
+            local iconFrame = NewIcon({name = name, unit = "player", inactive = false, auraType = "HARMFUL"})
             pfUI.api.UpdateMovable(iconFrame)
         end
     end
@@ -263,7 +305,7 @@ pfUI:RegisterModule("WeakIcons", "vanilla", function()
     local ipdebuffs = string.split(C.weakicons.ipdebuff.enabled, "#") -- Get inactive player debuffs
     for _, name in ipairs(ipbuffs) do
         if name and name ~= "" then
-            local iconFrame = NewIcon({name = name, unit = "player", inactive = true})
+            local iconFrame = NewIcon({name = name, unit = "player", inactive = true, auraType = "HELPFUL"})
             pfUI.api.UpdateMovable(iconFrame)
         end
     end
@@ -273,9 +315,9 @@ pfUI:RegisterModule("WeakIcons", "vanilla", function()
             pfUI.api.UpdateMovable(iconFrame)
         end
     end
-    for _, name in ipairs(ipdebuffs) do  -- Iterate and create inactive player debuff icons
+    for _, name in ipairs(ipdebuffs) do
         if name and name ~= "" then
-            local iconFrame = NewIcon({name = name, unit = "player", inactive = true}) -- Unit is player
+            local iconFrame = NewIcon({name = name, unit = "player", inactive = true, auraType = "HARMFUL"})
             pfUI.api.UpdateMovable(iconFrame)
         end
     end

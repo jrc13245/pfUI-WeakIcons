@@ -112,28 +112,36 @@ watcher:SetScript("OnUpdate", function()
     end
 end)
 
-function watcher:fetch(name, unit)
+function watcher:fetch(name, unit, auraType)
+    local results = {}
+
     if unit == "player" then
-        for i=1,32 do
-            if self.playerbuffs[i][3] == name then
-                return self.playerbuffs[i]
-            end
-            if self.playerdebuffs[i][3] == name then -- Added player debuff fetch
-                return self.playerdebuffs[i]
+        local sourceTable
+        if auraType == "HELPFUL" then
+            sourceTable = self.playerbuffs
+        elseif auraType == "HARMFUL" then
+            sourceTable = self.playerdebuffs
+        end
+
+        if sourceTable then
+            for i = 1, 32 do
+                if sourceTable[i][3] == name and sourceTable[i][1] > 0 then
+                    table.insert(results, sourceTable[i])
+                end
             end
         end
     elseif unit == "target" then
-        for i=1,32 do
-            if self.targetdebuffs[i][3] == name then
-                return self.targetdebuffs[i]
+        for i = 1, 32 do
+            if self.targetdebuffs[i][3] == name and self.targetdebuffs[i][1] > 0 then
+                table.insert(results, self.targetdebuffs[i])
             end
         end
-        for i=1,32 do
-            local texture, buffName, timeleft, stacks = GetBuffData("target", i, "HELPFUL")
-            if buffName == name then
-                return {timeleft, i, buffName, texture, stacks}
-            end
-        end
+    end
+
+    if table.getn(results) > 0 then
+        return results
+    else
+        return nil
     end
 end
 --}}
