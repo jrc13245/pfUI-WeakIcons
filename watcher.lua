@@ -125,14 +125,14 @@ function watcher:fetch(name, unit, auraType)
 
         if sourceTable then
             for i = 1, 32 do
-                if sourceTable[i][3] == name and sourceTable[i][1] > 0 then
+                if sourceTable[i][3] == name then
                     table.insert(results, sourceTable[i])
                 end
             end
         end
     elseif unit == "target" then
         for i = 1, 32 do
-            if self.targetdebuffs[i][3] == name and self.targetdebuffs[i][1] > 0 then
+            if self.targetdebuffs[i][3] == name then
                 table.insert(results, self.targetdebuffs[i])
             end
         end

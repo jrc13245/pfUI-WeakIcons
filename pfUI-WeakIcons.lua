@@ -170,47 +170,83 @@ pfUI:RegisterModule("WeakIcons", "vanilla", function()
 
                 if auraDataArray then
                     local instanceCount = table.getn(auraDataArray)
-                    local firstAura = auraDataArray[1]
+                    local timedAura, stackingAura
 
-                    -- Set texture from the first found aura
-                    if firstAura[4] and firstAura[4] ~= "" then
-                        this.texture:SetTexture(firstAura[4])
+                    -- Identify the roles of the auras
+                    for i = 1, instanceCount do
+                        local aura = auraDataArray[i]
+                        -- Find an aura with a timer (duration > 0)
+                        if aura[1] and aura[1] > 0 then
+                            if not timedAura or aura[1] > timedAura[1] then
+                                timedAura = aura
+                            end
+                        end
+                        -- Find an aura with stacks > 1
+                        if aura[5] and aura[5] > 1 then
+                            if not stackingAura or aura[5] > stackingAura[5] then
+                                stackingAura = aura
+                            end
+                        end
                     end
 
-                    -- Sort auras by remaining duration, descending
-                    table.sort(auraDataArray, function(a, b) return a[1] > b[1] end)
-
-                    if instanceCount > 1 then
-                        -- MULTIPLE AURAS (e.g., dual Crusader)
-                        this.text:Hide() -- Hide the large central text
-
-                        -- Show longest duration in top text
-                        this.text_top:SetText(GetColoredTimeString(auraDataArray[1][1]))
-                        this.text_top:Show()
-
-                        -- Show second longest duration in bottom text
-                        if auraDataArray[2] then
-                            this.text_bottom:SetText(GetColoredTimeString(auraDataArray[2][1]))
-                            this.text_bottom:Show()
-                        else
-                            this.text_bottom:Hide()
-                        end
-                    else
-                        -- SINGLE AURA
+                    -- Case 1: Jom Gabbar Special Handling
+                    -- This triggers if we found two *different* auras: one with a timer and one with stacks > 1.
+                    if timedAura and stackingAura and timedAura ~= stackingAura then
+                        -- Display combines info from both auras into a single icon
                         this.text_top:Hide()
                         this.text_bottom:Hide()
-
-                        -- Show the single timer in the large central text
-                        this.text:SetText(GetColoredTimeString(firstAura[1]))
+                        this.text:SetText(GetColoredTimeString(timedAura[1]))
                         this.text:Show()
-                    end
 
-                    -- Handle stacks: use instanceCount for soft stacks, otherwise use the aura's own stack count
-                    local stacks = (instanceCount > 1) and instanceCount or firstAura[5]
-                    if stacks and stacks > 1 then
-                        this.smalltext:SetText(stacks)
+                        this.texture:SetTexture(stackingAura[4])
+
+                        if stackingAura[5] and stackingAura[5] > 1 then
+                            this.smalltext:SetText(stackingAura[5])
+                        else
+                            this.smalltext:SetText("")
+                        end
+
+                    -- Case 2: Default Behavior (Single buffs, Sunder Armor, dual Holy Might, etc.)
                     else
-                        this.smalltext:SetText("")
+                        -- Sort all auras by duration to handle timers
+                        table.sort(auraDataArray, function(a, b) return a[1] > b[1] end)
+
+                        -- Determine icon and stack text for other cases
+                        local displayAura = auraDataArray[1] -- The one with the longest timer
+                        if displayAura then
+                            this.texture:SetTexture(displayAura[4])
+                        end
+
+                        local stacks = 0
+                        if stackingAura and stackingAura[5] > 1 then
+                            stacks = stackingAura[5] -- For buffs with hard stacks (e.g., Sunder Armor)
+                        elseif instanceCount > 1 then
+                            stacks = instanceCount -- For soft stacks (e.g., dual Holy Might)
+                        end
+
+                        if stacks > 1 then
+                            this.smalltext:SetText(stacks)
+                        else
+                            this.smalltext:SetText("")
+                        end
+
+                        -- Display timers based on instance count
+                        if instanceCount > 1 then
+                            this.text:Hide()
+                            this.text_top:SetText(GetColoredTimeString(auraDataArray[1][1]))
+                            this.text_top:Show()
+                            if auraDataArray[2] then
+                                this.text_bottom:SetText(GetColoredTimeString(auraDataArray[2][1]))
+                                this.text_bottom:Show()
+                            else
+                                this.text_bottom:Hide()
+                            end
+                        elseif instanceCount == 1 then
+                            this.text_top:Hide()
+                            this.text_bottom:Hide()
+                            this.text:SetText(GetColoredTimeString(auraDataArray[1][1]))
+                            this.text:Show()
+                        end
                     end
 
                     this.texture:SetDesaturated(false)
