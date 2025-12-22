@@ -87,6 +87,120 @@ pfUI:RegisterModule("WeakIcons", "vanilla", function()
     pfUI:UpdateConfig("weakicons", nil, "idebufficonsize", "48")
 
     -----------------------------------------------------------------------------
+    -- Icon groups for shift+drag group movement.
+    -----------------------------------------------------------------------------
+    local iconGroups = {
+        ActivePlayerBuffs = {},
+        ActiveEnemyDebuffs = {},
+        ActivePlayerDebuffs = {},
+        InactivePlayerBuffs = {},
+        InactiveEnemyDebuffs = {},
+        InactivePlayerDebuffs = {}
+    }
+
+    -- Track drag state for group movement
+    local groupDragState = {
+        isDragging = false,
+        startPositions = {}
+    }
+
+    -----------------------------------------------------------------------------
+    -- Helper: setup shift+drag group movement for an icon.
+    -- Hooks into pfUI's movable system to add shift+drag group movement.
+    -----------------------------------------------------------------------------
+    local function SetupGroupDrag(icon, groupName)
+        icon.weakIconGroup = groupName
+
+        -- Store original OnUpdate for aura display
+        local origOnUpdate = icon:GetScript("OnUpdate")
+
+        icon:SetScript("OnUpdate", function()
+            -- Call original OnUpdate (aura display logic)
+            if origOnUpdate then origOnUpdate() end
+
+            -- Handle group drag movement in real-time
+            if this.groupDragUpdate and groupDragState.isDragging and groupDragState.draggedIcon == this then
+                local cx, cy = this:GetCenter()
+                local deltaX = cx - groupDragState.startX
+                local deltaY = cy - groupDragState.startY
+                local group = iconGroups[groupDragState.groupName]
+                for i = 1, table.getn(group) do
+                    local groupIcon = group[i]
+                    if groupIcon ~= this then
+                        local iconStart = groupDragState.startPositions[groupIcon]
+                        if iconStart then
+                            groupIcon:ClearAllPoints()
+                            groupIcon:SetPoint(iconStart.anchor, UIParent, iconStart.anchor, iconStart.x + deltaX, iconStart.y + deltaY)
+                        end
+                    end
+                end
+            end
+        end)
+
+        -- Hook into the drag start - pfUI creates a dragger frame named [framename]Drag
+        local draggerName = icon:GetName() .. "Drag"
+
+        -- Create a frame that watches for the dragger to be created
+        local watchFrame = CreateFrame("Frame")
+        watchFrame:SetScript("OnUpdate", function()
+            local dragger = _G[draggerName]
+            if dragger then
+                -- Found the dragger, hook into it
+                local origDragStart = dragger:GetScript("OnDragStart")
+                local origDragStop = dragger:GetScript("OnDragStop")
+
+                dragger:SetScript("OnDragStart", function()
+                    if IsShiftKeyDown() then
+                        -- Setup group drag state
+                        groupDragState.isDragging = true
+                        groupDragState.groupName = groupName
+                        groupDragState.draggedIcon = icon
+                        groupDragState.startPositions = {}
+                        local cx, cy = icon:GetCenter()
+                        groupDragState.startX = cx
+                        groupDragState.startY = cy
+                        -- Record all icons' positions
+                        local group = iconGroups[groupName]
+                        for i = 1, table.getn(group) do
+                            local groupIcon = group[i]
+                            local anchor, _, _, xOfs, yOfs = groupIcon:GetPoint()
+                            groupDragState.startPositions[groupIcon] = {
+                                anchor = anchor or "CENTER",
+                                x = xOfs or 0,
+                                y = yOfs or 0
+                            }
+                        end
+                        icon.groupDragUpdate = true
+                    end
+                    -- Call original drag start
+                    if origDragStart then origDragStart() end
+                end)
+
+                dragger:SetScript("OnDragStop", function()
+                    -- Call original drag stop first
+                    if origDragStop then origDragStop() end
+
+                    if icon.groupDragUpdate then
+                        icon.groupDragUpdate = false
+                        -- Save all icon positions
+                        local group = iconGroups[groupDragState.groupName]
+                        for i = 1, table.getn(group) do
+                            pfUI.api.SaveMovable(group[i])
+                        end
+                        groupDragState.isDragging = false
+                        groupDragState.startPositions = {}
+                        groupDragState.draggedIcon = nil
+                        groupDragState.groupName = nil
+                    end
+                end)
+
+                -- Stop watching
+                this:SetScript("OnUpdate", nil)
+            end
+        end)
+    end
+
+    -----------------------------------------------------------------------------
     -- NewIcon: creates an aura icon frame.
     -- The 'inactive' flag determines which behavior/settings to use.
     -----------------------------------------------------------------------------
@@ -198,7 +312,7 @@ pfUI:RegisterModule("WeakIcons", "vanilla", function()
                         this.text:SetText(GetColoredTimeString(timedAura[1]))
                         this.text:Show()
 
-                        this.texture:SetTexture(stackingAura[4])
+                        this.texture:SetTexture(timedAura[4])
 
                         if stackingAura[5] and stackingAura[5] > 1 then
                             this.smalltext:SetText(stackingAura[5])
@@ -313,23 +427,35 @@ pfUI:RegisterModule("WeakIcons", "vanilla", function()
     -----------------------------------------------------------------------------
     local pbuffs = string.split(C.weakicons.pbuff.enabled, "#")
     local edebuffs = string.split(C.weakicons.edebuff.enabled, "#")
-    local pdebuffs = string.split(C.weakicons.pdebuff.enabled, "#")  -- Get player debuffs
+    local pdebuffs = string.split(C.weakicons.pdebuff.enabled, "#")
+
+    -- Active player buffs
     for _, name in ipairs(pbuffs) do
         if name and name ~= "" then
             local iconFrame = NewIcon({name = name, unit = "player", inactive = false, auraType = "HELPFUL"})
+            table.insert(iconGroups.ActivePlayerBuffs, iconFrame)
             pfUI.api.UpdateMovable(iconFrame)
+            SetupGroupDrag(iconFrame, "ActivePlayerBuffs")
         end
     end
+
+    -- Active enemy debuffs
     for _, name in ipairs(edebuffs) do
         if name and name ~= "" then
             local iconFrame = NewIcon({name = name, unit = "target", inactive = false})
+            table.insert(iconGroups.ActiveEnemyDebuffs, iconFrame)
             pfUI.api.UpdateMovable(iconFrame)
+            SetupGroupDrag(iconFrame, "ActiveEnemyDebuffs")
         end
     end
+
+    -- Active player debuffs
     for _, name in ipairs(pdebuffs) do
         if name and name ~= "" then
             local iconFrame = NewIcon({name = name, unit = "player", inactive = false, auraType = "HARMFUL"})
+            table.insert(iconGroups.ActivePlayerDebuffs, iconFrame)
             pfUI.api.UpdateMovable(iconFrame)
+            SetupGroupDrag(iconFrame, "ActivePlayerDebuffs")
         end
     end
 
@@ -338,23 +464,35 @@ pfUI:RegisterModule("WeakIcons", "vanilla", function()
     -----------------------------------------------------------------------------
     local ipbuffs = string.split(C.weakicons.ipbuff.enabled, "#")
     local iedebuffs = string.split(C.weakicons.iedebuff.enabled, "#")
-    local ipdebuffs = string.split(C.weakicons.ipdebuff.enabled, "#") -- Get inactive player debuffs
+    local ipdebuffs = string.split(C.weakicons.ipdebuff.enabled, "#")
+
+    -- Inactive player buffs
     for _, name in ipairs(ipbuffs) do
         if name and name ~= "" then
             local iconFrame = NewIcon({name = name, unit = "player", inactive = true, auraType = "HELPFUL"})
+            table.insert(iconGroups.InactivePlayerBuffs, iconFrame)
             pfUI.api.UpdateMovable(iconFrame)
+            SetupGroupDrag(iconFrame, "InactivePlayerBuffs")
         end
     end
+
+    -- Inactive enemy debuffs
     for _, name in ipairs(iedebuffs) do
         if name and name ~= "" then
             local iconFrame = NewIcon({name = name, unit = "target", inactive = true})
+            table.insert(iconGroups.InactiveEnemyDebuffs, iconFrame)
             pfUI.api.UpdateMovable(iconFrame)
+            SetupGroupDrag(iconFrame, "InactiveEnemyDebuffs")
         end
     end
+
+    -- Inactive player debuffs
     for _, name in ipairs(ipdebuffs) do
         if name and name ~= "" then
             local iconFrame = NewIcon({name = name, unit = "player", inactive = true, auraType = "HARMFUL"})
+            table.insert(iconGroups.InactivePlayerDebuffs, iconFrame)
             pfUI.api.UpdateMovable(iconFrame)
+            SetupGroupDrag(iconFrame, "InactivePlayerDebuffs")
         end
     end
 end
